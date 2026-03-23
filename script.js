@@ -79,12 +79,11 @@ function updateUI() {
     let pointsInRank = acc.points % 400;
     let division = Math.floor(pointsInRank / 100) + 1;
 
-    // FLEXIBLE WIN RATE: Using a 5.0 multiplier instead of 2.0 to make it more sensitive
     let winsInHistory = (acc.history || []).filter(h => h.res === "WIN").length;
     let winRate = acc.history && acc.history.length > 0 ? (winsInHistory / acc.history.length) : 0.5;
     
     const bonusEl = document.getElementById('bonus-display');
-    let displayBonus = (winRate - 0.5) * 500; // 500 makes a 10% change in winrate move the needle 50%
+    let displayBonus = (winRate - 0.5) * 500; 
 
     if (winRate >= 0.5) {
         bonusEl.innerText = displayBonus > 0 ? `+${displayBonus.toFixed(0)}% RP BONUS` : `NEUTRAL RP RATE`;
@@ -108,6 +107,26 @@ function updateUI() {
     document.getElementById('current-rank-logo').className = `rank-icon rank-${rankName}`;
     
     localStorage.setItem('crimson_accounts', JSON.stringify(allAccounts));
+    localStorage.setItem('crimson_current_acc', currentAccIdx);
+    localStorage.setItem('crimson_settings', JSON.stringify(settings));
+}
+
+function playRankUpCutscene(rankName, rankIdx) {
+    const overlay = document.getElementById('rank-up-overlay');
+    const nameEl = document.getElementById('rank-up-name');
+    const iconEl = document.getElementById('rank-up-icon');
+    if (!overlay || !nameEl || !iconEl) return;
+    
+    nameEl.innerText = rankName.toUpperCase();
+    nameEl.className = `cutscene-${rankName}`;
+    iconEl.className = `rank-icon rank-${rankName}`;
+    overlay.style.display = 'flex';
+    setTimeout(() => overlay.classList.add('active'), 50);
+    const duration = 2500 + (rankIdx * 500); 
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        setTimeout(() => overlay.style.display = 'none', 500);
+    }, duration);
 }
 
 // --- RELOAD PROTECTION ---
@@ -135,15 +154,20 @@ function resetRound() {
     document.getElementById('bot-roll').innerHTML = `<span class="roll-value">?</span>`;
     document.getElementById('player-retries').innerText = godMode ? "GOD MODE" : `RETRIES: ${playerRetries}`;
     
-    const range = BOT_LUCK_CONFIG[currentBotRank];
-    let weight = 0.8; 
-    currentBotLuckValue = range[0] + (Math.pow(Math.random(), 1 - weight) * (range[1] - range[0]));
-    botRoll = generateRarity(currentBotLuckValue);
+    if (botRigged) {
+        currentBotLuckValue = 1.05;
+        botRoll = 1.05;
+    } else {
+        const range = BOT_LUCK_CONFIG[currentBotRank];
+        let weight = 0.8; 
+        currentBotLuckValue = range[0] + (Math.pow(Math.random(), 1 - weight) * (range[1] - range[0]));
+        botRoll = generateRarity(currentBotLuckValue);
+    }
 }
 
 document.getElementById('roll-btn').onclick = () => {
     if ((playerRetries > 0 || godMode) && !isProcessing) {
-        localStorage.setItem('crimson_in_match', 'true'); // Penalty active once you roll
+        localStorage.setItem('crimson_in_match', 'true'); 
         playerRoll = generateRarity(playerLuck);
         if(!godMode) playerRetries--;
         document.getElementById('player-roll').innerHTML = `<span class="roll-value">1 in ${formatRoll(playerRoll)}</span><span class="roll-suffix">RARITY</span>`;
@@ -159,20 +183,21 @@ document.getElementById('stand-btn').onclick = () => {
     setTimeout(() => {
         if (playerRoll > botRoll) playerSets++; else botSets++;
         updateDots();
+        checkAndSaveHighRoll(playerRoll);
         if (playerSets === 3 || botSets === 3) handleMatchEnd();
         else setTimeout(resetRound, 1000);
     }, 800);
 };
 
 function handleMatchEnd() {
-    localStorage.setItem('crimson_in_match', 'false'); // Safe to leave now
+    localStorage.setItem('crimson_in_match', 'false'); 
     let acc = allAccounts[currentAccIdx];
     let win = playerSets === 3;
     let score = `${playerSets}-${botSets}`;
     
     if(!acc.history) acc.history = [];
-    acc.history.unshift({res: win ? "WIN" : "LOSS", time: getTime()});
-    if(acc.history.length > 15) acc.history.pop(); // Shorter history = faster rate changes
+    acc.history.unshift({res: win ? "WIN" : "LOSS", p: playerRoll, b: botRoll, score: score, time: getTime()});
+    if(acc.history.length > 15) acc.history.pop(); 
 
     let pRankIdx = Math.min(6, Math.floor(acc.points / 400));
     let expectedLuckRange = BOT_LUCK_CONFIG[ranks[pRankIdx]];
@@ -184,8 +209,8 @@ function handleMatchEnd() {
     let setMultiplier = (score === "3-0" || score === "0-3") ? 1.3 : (score === "3-2" || score === "2-3" ? 0.7 : 1.0);
 
     let winsInHistory = acc.history.filter(h => h.res === "WIN").length;
-    let winRate = winsInHistory / acc.history.length;
-    let winRateMod = (winRate - 0.5) * 5; // Aggressive sensitivity
+    let winRate = acc.history.length > 0 ? winsInHistory / acc.history.length : 0.5;
+    let winRateMod = (winRate - 0.5) * 5; 
 
     let pointChange = 0;
     
@@ -196,7 +221,6 @@ function handleMatchEnd() {
         acc.streak++;
     } 
     else {
-        // SCALING HARSHNESS: Base loss increases by 2 per rank index
         let baseLoss = 15 + (pRankIdx * 2); 
         pointChange = (baseLoss * (1 - winRateMod)) * luckMultiplier * setMultiplier;
         acc.points = Math.max(0, acc.points - pointChange);
@@ -217,11 +241,127 @@ function updateDots() {
     }
 }
 
-// ... Admin functions and high rolls logic remain standard ...
+function checkAndSaveHighRoll(val) {
+    let acc = allAccounts[currentAccIdx];
+    globalHighRolls.push({name: acc.name, roll: val, time: getTime()});
+    globalHighRolls.sort((a,b) => b.roll - a.roll);
+    globalHighRolls = globalHighRolls.slice(0, 15);
+    localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
+}
+
+// --- MODALS AND MENUS ---
+function toggleModal(id) {
+    const m = document.getElementById(id);
+    if (!m) return;
+    m.style.display = (m.style.display === 'none' || !m.style.display) ? 'flex' : 'none';
+    if(id === 'acc-modal' && m.style.display === 'flex') renderAccounts();
+}
+
+function renderAccounts() {
+    const list = document.getElementById('acc-list');
+    if (!list) return;
+    list.innerHTML = "";
+    allAccounts.forEach((acc, idx) => {
+        list.innerHTML += `<div class="acc-item" style="border-left: 3px solid ${idx === currentAccIdx ? '#ef4444' : 'transparent'}">
+            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;"><b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small></div>
+            <button onclick="deleteAcc(event, ${idx})" style="color:#f87171; font-size:0.6rem;">DEL</button>
+        </div>`;
+    });
+}
+
+function switchAcc(i) { currentAccIdx = i; updateUI(); queueBot(); resetRound(); toggleModal('acc-modal'); }
+
+function createNewAccount() {
+    let n = document.getElementById('new-acc-name').value;
+    if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: []}); renderAccounts(); }
+}
+
+function deleteAcc(e, i) {
+    e.stopPropagation();
+    if(allAccounts.length > 1) { 
+        allAccounts.splice(i, 1); 
+        if(currentAccIdx >= allAccounts.length) currentAccIdx=0; 
+        renderAccounts(); 
+        updateUI(); 
+    }
+}
+
+function openHighRolls() {
+    toggleModal('high-rolls-modal');
+    const list = document.getElementById('high-rolls-list');
+    if (!list) return;
+    list.innerHTML = globalHighRolls.map((h, i) => `
+        <div class="history-item">
+            <div style="display:flex; justify-content:space-between; width:100%;">
+                <span>#${i+1} ${h.name}</span> <b style="color:#ef4444">1 in ${formatRoll(h.roll)}</b>
+            </div>
+            <div class="history-meta"><span>TIME: ${h.time}</span></div>
+        </div>`).join('');
+}
+
+function openHistory() {
+    toggleModal('history-modal');
+    const list = document.getElementById('history-list');
+    if (!list) return;
+    list.innerHTML = (allAccounts[currentAccIdx].history || []).map(h => `
+        <div class="history-item">
+            <div style="display:flex; justify-content:space-between; width:100%;">
+                <b style="color:${h.res==='WIN'?'#22c55e':'#ef4444'}">${h.res} (${h.score || "N/A"})</b>
+                <span>1 in ${formatRoll(h.p || 0)} vs ${formatRoll(h.b || 0)}</span>
+            </div>
+            <div class="history-meta"><span>LOGGED: ${h.time}</span></div>
+        </div>`).join('');
+}
+
+function openLeaderboard() {
+    toggleModal('leaderboard-modal');
+    const list = document.getElementById('leaderboard-list');
+    if (!list) return;
+    list.innerHTML = [...allAccounts].sort((a,b)=>b.points-a.points).map((acc, i) => `
+        <div class="leader-item"><span>#${i+1} ${acc.name}</span><b>${Math.floor(acc.points)} RP</b></div>`).join('');
+}
+
+function updateSettings() { 
+    settings.roundNumbers = document.getElementById('round-toggle').checked; 
+    updateUI(); 
+}
+
+function wipeData() { 
+    if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } 
+}
+
 function adminAction(type) {
     if(type === 'instaWin') { playerSets = 3; handleMatchEnd(); }
-    else if(type === 'godMode') { godMode = !godMode; resetRound(); }
+    else if(type === 'godMode') {
+        godMode = !godMode;
+        document.getElementById('god-mode-btn').classList.toggle('active-god', godMode);
+        document.getElementById('god-mode-btn').innerText = `GOD MODE: ${godMode ? 'ON' : 'OFF'}`;
+        resetRound();
+    }
+    else if(type === 'rigBot') {
+        botRigged = !botRigged;
+        document.getElementById('rig-bot-btn').classList.toggle('active-god', botRigged);
+        document.getElementById('rig-bot-btn').innerText = `RIG BOT: ${botRigged ? 'ON' : 'OFF'}`;
+    }
+    else if(type === 'clearHistory') {
+        allAccounts[currentAccIdx].history = [];
+        updateUI();
+    }
 }
+
+function applyAdminChanges() {
+    playerLuck = parseFloat(document.getElementById('admin-luck-input').value) || 2.0;
+    let rp = parseInt(document.getElementById('admin-rp-input').value);
+    if(!isNaN(rp)) allAccounts[currentAccIdx].points = rp;
+    updateUI(); 
+    toggleModal('admin-modal');
+}
+
+window.onkeydown = (e) => { 
+    if(e.key.toLowerCase() === 'p') { 
+        if(prompt("Passcode:") === "admin123") toggleModal('admin-modal'); 
+    } 
+};
 
 window.onload = () => { 
     checkLeaverPenalty();
