@@ -1,15 +1,16 @@
 const ranks = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Emerald", "Nightmare"];
 
-// --- BOT LUCK CONFIGURATION 
+// --- BUFFED BOT LUCK CONFIGURATION
 const BOT_LUCK_CONFIG = {
-    "Bronze": [1.5, 2.25],
-    "Silver": [2.4, 3.3],
-    "Gold": [3.45, 4.5],
-    "Platinum": [4.65, 6.0],
-    "Diamond": [6.15, 8.25],
-    "Emerald": [8.4, 12.0],
-    "Nightmare": [15.0, 37.5] 
+    "Bronze": [1.5, 3.0],
+    "Silver": [3.5, 5.5],
+    "Gold": [6.0, 9.0],
+    "Platinum": [10.0, 15.0],
+    "Diamond": [18.0, 25.0],
+    "Emerald": [30.0, 50.0],
+    "Nightmare": [75.0, 250.0] 
 };
+
 // DATA
 let allAccounts = JSON.parse(localStorage.getItem('crimson_accounts')) || [{name: "Player 1", points: 0, streak: 0, history: []}];
 let currentAccIdx = parseInt(localStorage.getItem('crimson_current_acc')) || 0;
@@ -19,10 +20,10 @@ let settings = JSON.parse(localStorage.getItem('crimson_settings')) || { roundNu
 let lastDiv = null;
 let lastRankIdx = null;
 
-// Admin Settings
 let godMode = false;
 let botRigged = false;
 let playerLuck = 2.0;
+let currentBotLuckValue = 1.0; 
 
 if (!allAccounts[currentAccIdx]) currentAccIdx = 0;
 
@@ -39,6 +40,40 @@ function generateRarity(luckFactor) {
 
 function formatRoll(num) { return settings.roundNumbers ? Math.round(num) : num.toFixed(2); }
 
+// --- UI POPUP SYSTEM ---
+function showPointPopup(amount, isWin) {
+    const container = document.getElementById('rank-container') || document.body;
+    const popup = document.createElement('div');
+    popup.innerText = (isWin ? "+" : "-") + Math.abs(Math.round(amount)) + " RP";
+    popup.style.cssText = `
+        position: absolute;
+        left: 50%;
+        top: 40%;
+        transform: translateX(-50%);
+        color: ${isWin ? '#22c55e' : '#ef4444'};
+        font-weight: bold;
+        font-size: 1.5rem;
+        pointer-events: none;
+        animation: floatUp 1.5s ease-out forwards;
+        z-index: 1000;
+        text-shadow: 0 0 10px rgba(0,0,0,0.5);
+    `;
+    
+    if (!document.getElementById('popup-anim')) {
+        const style = document.createElement('style');
+        style.id = 'popup-anim';
+        style.innerHTML = `@keyframes floatUp { 
+            0% { opacity: 0; transform: translate(-50%, 0); } 
+            20% { opacity: 1; }
+            100% { opacity: 0; transform: translate(-50%, -50px); } 
+        }`;
+        document.head.appendChild(style);
+    }
+
+    container.appendChild(popup);
+    setTimeout(() => popup.remove(), 1500);
+}
+
 function updateUI() {
     let acc = allAccounts[currentAccIdx];
     let rIdx = Math.min(6, Math.floor(acc.points / 400));
@@ -46,14 +81,15 @@ function updateUI() {
     let pointsInRank = acc.points % 400;
     let division = Math.floor(pointsInRank / 100) + 1;
 
-    // Calculate Win Rate for Bonus Display
+    // Fixed default win rate to 0.5 so new accounts don't get immediate penalties
     let winsInHistory = (acc.history || []).filter(h => h.res === "WIN").length;
-    let winRate = acc.history && acc.history.length > 0 ? (winsInHistory / acc.history.length) : 0;
+    let winRate = acc.history && acc.history.length > 0 ? (winsInHistory / acc.history.length) : 0.5;
     
     const bonusEl = document.getElementById('bonus-display');
     if (winRate >= 0.5) {
-        bonusEl.innerText = `+${(winRate * 100).toFixed(0)}% RP BONUS`;
-        bonusEl.style.color = "#22c55e";
+        let bonus = (winRate - 0.5) * 200; // Shifted so 50% = 0 bonus, 100% = +100% bonus
+        bonusEl.innerText = bonus > 0 ? `+${bonus.toFixed(0)}% RP BONUS` : `NEUTRAL RP RATE`;
+        bonusEl.style.color = bonus > 0 ? "#22c55e" : "#9ca3af";
     } else {
         let penalty = Math.min(50, ((0.5 - winRate) * 200));
         bonusEl.innerText = `-${penalty.toFixed(0)}% RP PENALTY`;
@@ -128,38 +164,19 @@ function resetRound() {
     document.getElementById('player-retries').innerText = godMode ? "GOD MODE" : `RETRIES: ${playerRetries}`;
     
     if (botRigged) {
+        currentBotLuckValue = 1.05;
         botRoll = 1.05;
     } else {
-        let acc = allAccounts[currentAccIdx];
-        let pRankIdx = Math.min(6, Math.floor(acc.points / 400));
-        let pDiv = Math.floor((acc.points % 400) / 100) + 1; // 1, 2, 3, or 4
-        
         const range = BOT_LUCK_CONFIG[currentBotRank];
         let min = range[0];
         let max = range[1];
-        let finalLuck;
-
-        // LOGIC: If same rank, scale luck based on player's division
-        if (currentBotRank === ranks[pRankIdx]) {
-            // Bias toward top of scale: Div 1 = 25% bias, Div 4 = 100% bias
-            let bias = pDiv / 4; 
-            let randomWeight = Math.pow(Math.random(), 1 / bias); // Higher Div = Higher luck chance
-            finalLuck = min + (randomWeight * (max - min));
-        } 
-        // LOGIC: If player is NOT Nightmare, but bot IS Nightmare, force bot to baseline
-        else if (currentBotRank === "Nightmare" && ranks[pRankIdx] !== "Nightmare") {
-            finalLuck = min + (Math.random() * 2); // Lower end of Nightmare scale
-        }
-        // LOGIC: Everything else is completely random
-        else {
-            finalLuck = Math.random() * (max - min) + min;
-        }
-        
+        let weight = 0.8; 
+        let finalLuck = min + (Math.pow(Math.random(), 1 - weight) * (max - min));
+        currentBotLuckValue = finalLuck;
         botRoll = generateRarity(finalLuck);
     }
 }
 
-// Gameplay
 document.getElementById('roll-btn').onclick = () => {
     if ((playerRetries > 0 || godMode) && !isProcessing) {
         playerRoll = generateRarity(playerLuck);
@@ -183,14 +200,6 @@ document.getElementById('stand-btn').onclick = () => {
     }, 800);
 };
 
-function checkAndSaveHighRoll(val) {
-    let acc = allAccounts[currentAccIdx];
-    globalHighRolls.push({name: acc.name, roll: val, time: getTime()});
-    globalHighRolls.sort((a,b) => b.roll - a.roll);
-    globalHighRolls = globalHighRolls.slice(0, 15);
-    localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
-}
-
 function handleMatchEnd() {
     let acc = allAccounts[currentAccIdx];
     let win = playerSets === 3;
@@ -200,28 +209,55 @@ function handleMatchEnd() {
     acc.history.unshift({res: win ? "WIN" : "LOSS", p: playerRoll, b: botRoll, score: score, time: getTime()});
     if(acc.history.length > 20) acc.history.pop();
 
+    // 1. CALCULATE EXPECTED LUCK & DIFFICULTY MULTIPLIER
+    let pRankIdx = Math.min(6, Math.floor(acc.points / 400));
+    let expectedLuckRange = BOT_LUCK_CONFIG[ranks[pRankIdx]];
+    let pDiv = Math.floor((acc.points % 400) / 100); 
+    let expectedLuck = expectedLuckRange[0] + (pDiv * ((expectedLuckRange[1] - expectedLuckRange[0]) / 3));
+
+    let luckDiff = currentBotLuckValue - expectedLuck;
+    
+    // Multiplier Logic: Flipped to award MORE points for beating weaker bots, LESS for beating harder bots.
+    // This same logic is applied safely to losses (lose MORE against weak bots, LESS against hard bots).
+    let luckMultiplier = Math.max(0.4, Math.min(2.5, 1 - (luckDiff / (expectedLuck * 2))));
+
+    // 2. SET PERFORMANCE MULTIPLIER (30%)
+    let setMultiplier = 1.0;
+    if (score === "3-0" || score === "0-3") setMultiplier = 1.3;
+    else if (score === "3-2" || score === "2-3") setMultiplier = 0.7;
+
+    // 3. WIN RATE BONUS/PENALTY CALCULATION
+    let winsInHistory = acc.history.filter(h => h.res === "WIN").length;
+    let winRate = (acc.history.length > 0) ? winsInHistory / acc.history.length : 0.5;
+    
+    let winRateMod = 0;
+    if (winRate >= 0.5) {
+        winRateMod = (winRate - 0.5) * 2; // Scales from 0 to +1.0
+    } else {
+        winRateMod = -Math.min(0.5, (0.5 - winRate) * 2); // Negative penalty (e.g., -0.1 for 45% win rate)
+    }
+
+    let pointChange = 0;
+    let baseAmount = 15; // Balanced Base Value
+
     if (win) {
-        let baseGain = 25;
-        let winsInHistory = acc.history.filter(h => h.res === "WIN").length;
-        let winRate = winsInHistory / acc.history.length;
-
-        let finalGain = baseGain;
-        if (winRate >= 0.5) {
-            finalGain = baseGain + (baseGain * winRate);
-        } else {
-            let underFifty = 0.5 - winRate;
-            let penaltyPercent = Math.min(0.5, underFifty * 2);
-            finalGain = baseGain - (baseGain * penaltyPercent);
-        }
-
-        acc.points += finalGain;
+        // Apply Penalty/Bonus to the Gain (e.g., baseAmount * 0.9 if 10% penalty)
+        let rateAdjustedGain = baseAmount * (1 + winRateMod); 
+        
+        pointChange = rateAdjustedGain * luckMultiplier * setMultiplier;
+        acc.points += pointChange;
         acc.streak++;
     } 
     else {
-        acc.points = Math.max(0, acc.points - 15);
+        // Reverse Penalty/Bonus for the Loss (e.g., baseAmount * 1.1 if 10% penalty)
+        let rateAdjustedLoss = baseAmount * (1 - winRateMod);
+        
+        pointChange = rateAdjustedLoss * luckMultiplier * setMultiplier;
+        acc.points = Math.max(0, acc.points - pointChange);
         acc.streak = 0;
     }
     
+    showPointPopup(pointChange, win);
     playerSets = 0; botSets = 0;
     updateUI(); updateDots(); queueBot(); setTimeout(resetRound, 1500);
 }
@@ -235,7 +271,15 @@ function updateDots() {
     }
 }
 
-// Menus & Admin (Simplified for brevity, same as previous)
+function checkAndSaveHighRoll(val) {
+    let acc = allAccounts[currentAccIdx];
+    globalHighRolls.push({name: acc.name, roll: val, time: getTime()});
+    globalHighRolls.sort((a,b) => b.roll - a.roll);
+    globalHighRolls = globalHighRolls.slice(0, 15);
+    localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
+}
+
+// ... Menu & Admin functions ...
 function adminAction(type) {
     if(type === 'instaWin') { playerSets = 3; handleMatchEnd(); }
     else if(type === 'godMode') {
