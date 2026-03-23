@@ -75,8 +75,13 @@ function updateUI() {
         bonusEl.style.color = "#ef4444";
     }
 
-    if (lastRankIdx !== null && rIdx > lastRankIdx) playRankUpCutscene(rankName, rIdx);
-    lastDiv = division; lastRankIdx = rIdx;
+    // TRIGGER PROMOTION CHECK
+    if (lastRankIdx !== null && rIdx > lastRankIdx) {
+        playRankUpCutscene(rankName, rIdx);
+    }
+    
+    lastDiv = division; 
+    lastRankIdx = rIdx;
 
     document.getElementById('rank-name').innerText = `${rankName.toUpperCase()} ${division}`;
     document.getElementById('user-display-name').innerText = acc.name;
@@ -87,9 +92,41 @@ function updateUI() {
     
     localStorage.setItem('crimson_accounts', JSON.stringify(allAccounts));
     localStorage.setItem('crimson_current_acc', currentAccIdx);
+    localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
 }
 
-// --- CORE GAMEPLAY ---
+// FIXED RANK UP LOGIC WITH FAILSAFE
+function playRankUpCutscene(rankName, rankIdx) {
+    const overlay = document.getElementById('rank-up-overlay');
+    const nameEl = document.getElementById('rank-up-name');
+    const iconEl = document.getElementById('rank-up-icon');
+
+    // If HTML elements are missing, just exit to prevent freezing the game
+    if (!overlay || !nameEl || !iconEl) {
+        console.warn("Promotion elements missing from HTML. Skipping animation.");
+        return;
+    }
+    
+    nameEl.innerText = rankName.toUpperCase();
+    nameEl.className = `cutscene-${rankName}`;
+    iconEl.className = `rank-icon rank-${rankName}`;
+    
+    overlay.style.display = 'flex';
+    // Small delay to allow CSS transitions to trigger
+    setTimeout(() => overlay.classList.add('active'), 10);
+
+    const duration = 3000 + (rankIdx * 300); 
+
+    // FAILSAFE: Force hide the overlay after the duration so the game never stays frozen
+    setTimeout(() => {
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 500);
+    }, duration);
+}
+
+// --- RELOAD PROTECTION ---
 function checkLeaverPenalty() {
     if (localStorage.getItem('crimson_in_match') === 'true') {
         let acc = allAccounts[currentAccIdx];
@@ -119,7 +156,6 @@ function resetRound() {
     botRoll = generateRarity(currentBotLuckValue);
 }
 
-// GAMEPLAY BUTTONS
 document.getElementById('roll-btn').onclick = () => {
     if ((playerRetries > 0 || godMode) && !isProcessing) {
         localStorage.setItem('crimson_in_match', 'true'); 
@@ -134,6 +170,9 @@ document.getElementById('stand-btn').onclick = () => {
     if (playerRoll === 0 || isProcessing) return;
     isProcessing = true;
     document.getElementById('bot-roll').innerHTML = `<span class="roll-value">1 in ${formatRoll(botRoll)}</span><span class="roll-suffix">RARITY</span>`;
+    
+    checkAndSaveHighRoll(playerRoll);
+
     setTimeout(() => {
         if (playerRoll > botRoll) playerSets++; else botSets++;
         updateDots();
@@ -170,6 +209,7 @@ function handleMatchEnd() {
         pointChange = (15 * (1 + winRateMod)) * luckMultiplier * setMultiplier;
         acc.points += pointChange; acc.streak++;
     } else {
+        // SCALING RANK TAX: Losses get harder as you rank up
         pointChange = ((15 + (pRankIdx * 2)) * (1 - winRateMod)) * luckMultiplier * setMultiplier;
         acc.points = Math.max(0, acc.points - pointChange); acc.streak = 0;
     }
@@ -181,6 +221,7 @@ function handleMatchEnd() {
 
 function updateDots() {
     const p = document.getElementById('player-sets'), b = document.getElementById('bot-sets');
+    if (!p || !b) return;
     p.innerHTML = ""; b.innerHTML = "";
     for(let i=0; i<3; i++){
         p.innerHTML += `<div class="dot ${i < playerSets ? 'p-win' : ''}"></div>`;
@@ -188,8 +229,17 @@ function updateDots() {
     }
 }
 
+function checkAndSaveHighRoll(val) {
+    let acc = allAccounts[currentAccIdx];
+    if (val > 50) {
+        globalHighRolls.push({name: acc.name, roll: val, time: getTime()});
+        globalHighRolls.sort((a,b) => b.roll - a.roll);
+        globalHighRolls = globalHighRolls.slice(0, 15);
+        localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
+    }
+}
+
 // --- GLOBAL EXPORTS FOR GITHUB PAGES ---
-// This ensures that the HTML 'onclick' can find these functions.
 window.toggleModal = function(id) {
     const m = document.getElementById(id);
     if (!m) return;
@@ -201,37 +251,64 @@ window.switchAcc = function(i) { currentAccIdx = i; updateUI(); queueBot(); rese
 
 window.createNewAccount = function() {
     let n = document.getElementById('new-acc-name').value;
-    if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: []}); renderAccounts(); }
+    if(n) { 
+        allAccounts.push({name: n, points: 0, streak: 0, history: []}); 
+        renderAccounts(); 
+        document.getElementById('new-acc-name').value = "";
+    }
 };
 
 window.deleteAcc = function(e, i) {
     e.stopPropagation();
-    if(allAccounts.length > 1) { allAccounts.splice(i, 1); if(currentAccIdx >= allAccounts.length) currentAccIdx=0; renderAccounts(); updateUI(); }
+    if(allAccounts.length > 1) { 
+        allAccounts.splice(i, 1); 
+        if(currentAccIdx >= allAccounts.length) currentAccIdx=0; 
+        renderAccounts(); 
+        updateUI(); 
+    }
 };
 
 window.openHighRolls = function() {
     window.toggleModal('high-rolls-modal');
     const list = document.getElementById('high-rolls-list');
+    if (!list) return;
     list.innerHTML = globalHighRolls.map((h, i) => `<div class="history-item"><div style="display:flex; justify-content:space-between; width:100%;"><span>#${i+1} ${h.name}</span> <b style="color:#ef4444">1 in ${formatRoll(h.roll)}</b></div><div class="history-meta"><span>TIME: ${h.time}</span></div></div>`).join('');
 };
 
 window.openHistory = function() {
     window.toggleModal('history-modal');
     const list = document.getElementById('history-list');
-    list.innerHTML = (allAccounts[currentAccIdx].history || []).map(h => `<div class="history-item"><div style="display:flex; justify-content:space-between; width:100%;"><b style="color:${h.res==='WIN'?'#22c55e':'#ef4444'}">${h.res} (${h.score})</b><span>1 in ${formatRoll(h.p)} vs ${formatRoll(h.b)}</span></div><div class="history-meta"><span>LOGGED: ${h.time}</span></div></div>`).join('');
+    if (!list) return;
+    list.innerHTML = (allAccounts[currentAccIdx].history || []).map(h => `<div class="history-item"><div style="display:flex; justify-content:space-between; width:100%;"><b style="color:${h.res==='WIN'?'#22c55e':'#ef4444'}">${h.res} (${h.score})</b><span>1 in ${formatRoll(h.p || 0)} vs ${formatRoll(h.b || 0)}</span></div><div class="history-meta"><span>LOGGED: ${h.time}</span></div></div>`).join('');
 };
 
 window.openLeaderboard = function() {
     window.toggleModal('leaderboard-modal');
     const list = document.getElementById('leaderboard-list');
+    if (!list) return;
     list.innerHTML = [...allAccounts].sort((a,b)=>b.points-a.points).map((acc, i) => `<div class="leader-item"><span>#${i+1} ${acc.name}</span><b>${Math.floor(acc.points)} RP</b></div>`).join('');
 };
 
 window.adminAction = function(type) {
     if(type === 'instaWin') { playerSets = 3; handleMatchEnd(); }
-    else if(type === 'godMode') { godMode = !godMode; document.getElementById('god-mode-btn').classList.toggle('active-god', godMode); resetRound(); }
-    else if(type === 'rigBot') { botRigged = !botRigged; document.getElementById('rig-bot-btn').classList.toggle('active-god', botRigged); }
-    else if(type === 'clearHistory') { allAccounts[currentAccIdx].history = []; updateUI(); }
+    else if(type === 'godMode') { 
+        godMode = !godMode; 
+        const btn = document.getElementById('god-mode-btn');
+        if(btn) {
+            btn.classList.toggle('active-god', godMode); 
+            btn.innerText = `GOD MODE: ${godMode ? 'ON' : 'OFF'}`;
+        }
+        resetRound(); 
+    }
+    else if(type === 'rigBot') { 
+        botRigged = !botRigged; 
+        const btn = document.getElementById('rig-bot-btn');
+        if(btn) btn.classList.toggle('active-god', botRigged); 
+    }
+    else if(type === 'clearHistory') { 
+        allAccounts[currentAccIdx].history = []; 
+        updateUI(); 
+    }
 };
 
 window.applyAdminChanges = function() {
@@ -241,13 +318,23 @@ window.applyAdminChanges = function() {
     updateUI(); window.toggleModal('admin-modal');
 };
 
-window.updateSettings = function() { settings.roundNumbers = document.getElementById('round-toggle').checked; updateUI(); };
+window.updateSettings = function() { 
+    settings.roundNumbers = document.getElementById('round-toggle').checked; 
+    updateUI(); 
+};
+
 window.wipeData = function() { if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } };
 
 function renderAccounts() {
     const list = document.getElementById('acc-list');
+    if (!list) return;
     list.innerHTML = allAccounts.map((acc, idx) => `<div class="acc-item" style="border-left: 3px solid ${idx === currentAccIdx ? '#ef4444' : 'transparent'}"><div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;"><b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small></div><button onclick="deleteAcc(event, ${idx})" style="color:#f87171; font-size:0.6rem;">DEL</button></div>`).join('');
 }
 
 window.onkeydown = (e) => { if(e.key.toLowerCase() === 'p') { if(prompt("Passcode:") === "admin123") window.toggleModal('admin-modal'); } };
-window.onload = () => { checkLeaverPenalty(); updateUI(); queueBot(); resetRound(); };
+window.onload = () => { 
+    checkLeaverPenalty(); 
+    updateUI(); 
+    queueBot(); 
+    resetRound(); 
+};
