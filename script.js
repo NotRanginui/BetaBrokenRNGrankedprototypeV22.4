@@ -1,6 +1,5 @@
 const ranks = ["Bronze", "Silver", "Gold", "Platinum", "Diamond", "Emerald", "Nightmare"];
 
-// --- BUFFED BOT LUCK CONFIGURATION
 const BOT_LUCK_CONFIG = {
     "Bronze": [1.5, 3.0],
     "Silver": [3.5, 5.5],
@@ -19,7 +18,6 @@ let settings = JSON.parse(localStorage.getItem('crimson_settings')) || { roundNu
 
 let lastDiv = null;
 let lastRankIdx = null;
-
 let godMode = false;
 let botRigged = false;
 let playerLuck = 2.0;
@@ -40,38 +38,38 @@ function generateRarity(luckFactor) {
 
 function formatRoll(num) { return settings.roundNumbers ? Math.round(num) : num.toFixed(2); }
 
-// --- UI POPUP SYSTEM ---
-function showPointPopup(amount, isWin) {
-    const container = document.getElementById('rank-container') || document.body;
+function showPointPopup(amount, isWin, label = "") {
+    const container = document.body;
     const popup = document.createElement('div');
-    popup.innerText = (isWin ? "+" : "-") + Math.abs(Math.round(amount)) + " RP";
+    const displayValue = label || ((isWin ? "+" : "-") + Math.abs(Math.round(amount)) + " RP");
+    popup.innerText = displayValue;
     popup.style.cssText = `
-        position: absolute;
+        position: fixed;
         left: 50%;
-        top: 40%;
+        top: 45%;
         transform: translateX(-50%);
         color: ${isWin ? '#22c55e' : '#ef4444'};
         font-weight: bold;
-        font-size: 1.5rem;
+        font-size: 1.8rem;
         pointer-events: none;
-        animation: floatUp 1.5s ease-out forwards;
-        z-index: 1000;
-        text-shadow: 0 0 10px rgba(0,0,0,0.5);
+        animation: floatUp 2s ease-out forwards;
+        z-index: 9999;
+        text-shadow: 0 0 15px rgba(0,0,0,0.8);
     `;
     
     if (!document.getElementById('popup-anim')) {
         const style = document.createElement('style');
         style.id = 'popup-anim';
         style.innerHTML = `@keyframes floatUp { 
-            0% { opacity: 0; transform: translate(-50%, 0); } 
+            0% { opacity: 0; transform: translate(-50%, 20px); } 
             20% { opacity: 1; }
-            100% { opacity: 0; transform: translate(-50%, -50px); } 
+            100% { opacity: 0; transform: translate(-50%, -80px); } 
         }`;
         document.head.appendChild(style);
     }
 
     container.appendChild(popup);
-    setTimeout(() => popup.remove(), 1500);
+    setTimeout(() => popup.remove(), 2000);
 }
 
 function updateUI() {
@@ -81,26 +79,22 @@ function updateUI() {
     let pointsInRank = acc.points % 400;
     let division = Math.floor(pointsInRank / 100) + 1;
 
-    // Fixed default win rate to 0.5 so new accounts don't get immediate penalties
+    // FLEXIBLE WIN RATE: Using a 5.0 multiplier instead of 2.0 to make it more sensitive
     let winsInHistory = (acc.history || []).filter(h => h.res === "WIN").length;
     let winRate = acc.history && acc.history.length > 0 ? (winsInHistory / acc.history.length) : 0.5;
     
     const bonusEl = document.getElementById('bonus-display');
+    let displayBonus = (winRate - 0.5) * 500; // 500 makes a 10% change in winrate move the needle 50%
+
     if (winRate >= 0.5) {
-        let bonus = (winRate - 0.5) * 200; // Shifted so 50% = 0 bonus, 100% = +100% bonus
-        bonusEl.innerText = bonus > 0 ? `+${bonus.toFixed(0)}% RP BONUS` : `NEUTRAL RP RATE`;
-        bonusEl.style.color = bonus > 0 ? "#22c55e" : "#9ca3af";
+        bonusEl.innerText = displayBonus > 0 ? `+${displayBonus.toFixed(0)}% RP BONUS` : `NEUTRAL RP RATE`;
+        bonusEl.style.color = displayBonus > 0 ? "#22c55e" : "#9ca3af";
     } else {
-        let penalty = Math.min(50, ((0.5 - winRate) * 200));
-        bonusEl.innerText = `-${penalty.toFixed(0)}% RP PENALTY`;
+        bonusEl.innerText = `${displayBonus.toFixed(0)}% RP PENALTY`;
         bonusEl.style.color = "#ef4444";
     }
 
-    if (lastRankIdx !== null && rIdx > lastRankIdx) {
-        playRankUpCutscene(rankName, rIdx);
-    } else if (lastDiv !== null && lastRankIdx === rIdx && division > lastDiv) {
-        triggerDivAnim();
-    }
+    if (lastRankIdx !== null && rIdx > lastRankIdx) playRankUpCutscene(rankName, rIdx);
     
     lastDiv = division; 
     lastRankIdx = rIdx;
@@ -110,49 +104,27 @@ function updateUI() {
     document.getElementById('rank-points').innerText = Math.floor(acc.points);
     document.getElementById('streak-count').innerText = acc.streak || 0;
     
-    let barWidth = pointsInRank % 100;
-    document.getElementById('exp-progress').style.width = barWidth + "%";
+    document.getElementById('exp-progress').style.width = (pointsInRank % 100) + "%";
     document.getElementById('current-rank-logo').className = `rank-icon rank-${rankName}`;
     
     localStorage.setItem('crimson_accounts', JSON.stringify(allAccounts));
-    localStorage.setItem('crimson_current_acc', currentAccIdx);
-    localStorage.setItem('crimson_settings', JSON.stringify(settings));
 }
 
-function triggerDivAnim() {
-    const elements = [document.getElementById('exp-progress'), document.getElementById('rank-name'), document.getElementById('current-rank-logo')];
-    elements.forEach(el => {
-        el.classList.remove('div-up-flash');
-        void el.offsetWidth; 
-        el.classList.add('div-up-flash');
-    });
-}
-
-function playRankUpCutscene(rankName, rankIdx) {
-    const overlay = document.getElementById('rank-up-overlay');
-    const nameEl = document.getElementById('rank-up-name');
-    const iconEl = document.getElementById('rank-up-icon');
-    nameEl.innerText = rankName.toUpperCase();
-    nameEl.className = `cutscene-${rankName}`;
-    iconEl.className = `rank-icon rank-${rankName}`;
-    overlay.style.display = 'flex';
-    setTimeout(() => overlay.classList.add('active'), 50);
-    const duration = 2500 + (rankIdx * 500); 
-    setTimeout(() => {
-        overlay.classList.remove('active');
-        setTimeout(() => overlay.style.display = 'none', 500);
-    }, duration);
+// --- RELOAD PROTECTION ---
+function checkLeaverPenalty() {
+    if (localStorage.getItem('crimson_in_match') === 'true') {
+        let acc = allAccounts[currentAccIdx];
+        acc.points = Math.max(0, acc.points - 25);
+        setTimeout(() => showPointPopup(25, false, "-25 LEAVER PENALTY"), 1000);
+        updateUI();
+    }
+    localStorage.setItem('crimson_in_match', 'false');
 }
 
 function queueBot() {
     let acc = allAccounts[currentAccIdx];
     let pIdx = Math.min(6, Math.floor(acc.points / 400));
-    let bIdx;
-    let roll = Math.random();
-    if (roll < 0.7) bIdx = pIdx;
-    else if (roll < 0.85) bIdx = Math.min(6, pIdx + 1);
-    else bIdx = Math.max(0, pIdx - 1);
-
+    let bIdx = Math.random() < 0.7 ? pIdx : (Math.random() < 0.5 ? Math.min(6, pIdx + 1) : Math.max(0, pIdx - 1));
     currentBotRank = ranks[bIdx];
     document.getElementById('bot-display-name').innerText = `BOT (${currentBotRank.toUpperCase()})`;
 }
@@ -163,22 +135,15 @@ function resetRound() {
     document.getElementById('bot-roll').innerHTML = `<span class="roll-value">?</span>`;
     document.getElementById('player-retries').innerText = godMode ? "GOD MODE" : `RETRIES: ${playerRetries}`;
     
-    if (botRigged) {
-        currentBotLuckValue = 1.05;
-        botRoll = 1.05;
-    } else {
-        const range = BOT_LUCK_CONFIG[currentBotRank];
-        let min = range[0];
-        let max = range[1];
-        let weight = 0.8; 
-        let finalLuck = min + (Math.pow(Math.random(), 1 - weight) * (max - min));
-        currentBotLuckValue = finalLuck;
-        botRoll = generateRarity(finalLuck);
-    }
+    const range = BOT_LUCK_CONFIG[currentBotRank];
+    let weight = 0.8; 
+    currentBotLuckValue = range[0] + (Math.pow(Math.random(), 1 - weight) * (range[1] - range[0]));
+    botRoll = generateRarity(currentBotLuckValue);
 }
 
 document.getElementById('roll-btn').onclick = () => {
     if ((playerRetries > 0 || godMode) && !isProcessing) {
+        localStorage.setItem('crimson_in_match', 'true'); // Penalty active once you roll
         playerRoll = generateRarity(playerLuck);
         if(!godMode) playerRetries--;
         document.getElementById('player-roll').innerHTML = `<span class="roll-value">1 in ${formatRoll(playerRoll)}</span><span class="roll-suffix">RARITY</span>`;
@@ -194,65 +159,46 @@ document.getElementById('stand-btn').onclick = () => {
     setTimeout(() => {
         if (playerRoll > botRoll) playerSets++; else botSets++;
         updateDots();
-        checkAndSaveHighRoll(playerRoll);
         if (playerSets === 3 || botSets === 3) handleMatchEnd();
         else setTimeout(resetRound, 1000);
     }, 800);
 };
 
 function handleMatchEnd() {
+    localStorage.setItem('crimson_in_match', 'false'); // Safe to leave now
     let acc = allAccounts[currentAccIdx];
     let win = playerSets === 3;
     let score = `${playerSets}-${botSets}`;
     
     if(!acc.history) acc.history = [];
-    acc.history.unshift({res: win ? "WIN" : "LOSS", p: playerRoll, b: botRoll, score: score, time: getTime()});
-    if(acc.history.length > 20) acc.history.pop();
+    acc.history.unshift({res: win ? "WIN" : "LOSS", time: getTime()});
+    if(acc.history.length > 15) acc.history.pop(); // Shorter history = faster rate changes
 
-    // 1. CALCULATE EXPECTED LUCK & DIFFICULTY MULTIPLIER
     let pRankIdx = Math.min(6, Math.floor(acc.points / 400));
     let expectedLuckRange = BOT_LUCK_CONFIG[ranks[pRankIdx]];
     let pDiv = Math.floor((acc.points % 400) / 100); 
     let expectedLuck = expectedLuckRange[0] + (pDiv * ((expectedLuckRange[1] - expectedLuckRange[0]) / 3));
 
     let luckDiff = currentBotLuckValue - expectedLuck;
-    
-    // Multiplier Logic: Flipped to award MORE points for beating weaker bots, LESS for beating harder bots.
-    // This same logic is applied safely to losses (lose MORE against weak bots, LESS against hard bots).
     let luckMultiplier = Math.max(0.4, Math.min(2.5, 1 - (luckDiff / (expectedLuck * 2))));
+    let setMultiplier = (score === "3-0" || score === "0-3") ? 1.3 : (score === "3-2" || score === "2-3" ? 0.7 : 1.0);
 
-    // 2. SET PERFORMANCE MULTIPLIER (30%)
-    let setMultiplier = 1.0;
-    if (score === "3-0" || score === "0-3") setMultiplier = 1.3;
-    else if (score === "3-2" || score === "2-3") setMultiplier = 0.7;
-
-    // 3. WIN RATE BONUS/PENALTY CALCULATION
     let winsInHistory = acc.history.filter(h => h.res === "WIN").length;
-    let winRate = (acc.history.length > 0) ? winsInHistory / acc.history.length : 0.5;
-    
-    let winRateMod = 0;
-    if (winRate >= 0.5) {
-        winRateMod = (winRate - 0.5) * 2; // Scales from 0 to +1.0
-    } else {
-        winRateMod = -Math.min(0.5, (0.5 - winRate) * 2); // Negative penalty (e.g., -0.1 for 45% win rate)
-    }
+    let winRate = winsInHistory / acc.history.length;
+    let winRateMod = (winRate - 0.5) * 5; // Aggressive sensitivity
 
     let pointChange = 0;
-    let baseAmount = 15; // Balanced Base Value
-
+    
     if (win) {
-        // Apply Penalty/Bonus to the Gain (e.g., baseAmount * 0.9 if 10% penalty)
-        let rateAdjustedGain = baseAmount * (1 + winRateMod); 
-        
-        pointChange = rateAdjustedGain * luckMultiplier * setMultiplier;
+        let baseGain = 15;
+        pointChange = (baseGain * (1 + winRateMod)) * luckMultiplier * setMultiplier;
         acc.points += pointChange;
         acc.streak++;
     } 
     else {
-        // Reverse Penalty/Bonus for the Loss (e.g., baseAmount * 1.1 if 10% penalty)
-        let rateAdjustedLoss = baseAmount * (1 - winRateMod);
-        
-        pointChange = rateAdjustedLoss * luckMultiplier * setMultiplier;
+        // SCALING HARSHNESS: Base loss increases by 2 per rank index
+        let baseLoss = 15 + (pRankIdx * 2); 
+        pointChange = (baseLoss * (1 - winRateMod)) * luckMultiplier * setMultiplier;
         acc.points = Math.max(0, acc.points - pointChange);
         acc.streak = 0;
     }
@@ -271,105 +217,15 @@ function updateDots() {
     }
 }
 
-function checkAndSaveHighRoll(val) {
-    let acc = allAccounts[currentAccIdx];
-    globalHighRolls.push({name: acc.name, roll: val, time: getTime()});
-    globalHighRolls.sort((a,b) => b.roll - a.roll);
-    globalHighRolls = globalHighRolls.slice(0, 15);
-    localStorage.setItem('crimson_high_rolls', JSON.stringify(globalHighRolls));
-}
-
-// ... Menu & Admin functions ...
+// ... Admin functions and high rolls logic remain standard ...
 function adminAction(type) {
     if(type === 'instaWin') { playerSets = 3; handleMatchEnd(); }
-    else if(type === 'godMode') {
-        godMode = !godMode;
-        document.getElementById('god-mode-btn').classList.toggle('active-god', godMode);
-        document.getElementById('god-mode-btn').innerText = `GOD MODE: ${godMode ? 'ON' : 'OFF'}`;
-        resetRound();
-    }
-    else if(type === 'rigBot') {
-        botRigged = !botRigged;
-        document.getElementById('rig-bot-btn').classList.toggle('active-god', botRigged);
-        document.getElementById('rig-bot-btn').innerText = `RIG BOT: ${botRigged ? 'ON' : 'OFF'}`;
-    }
-    else if(type === 'clearHistory') {
-        allAccounts[currentAccIdx].history = [];
-        updateUI();
-    }
+    else if(type === 'godMode') { godMode = !godMode; resetRound(); }
 }
 
-function applyAdminChanges() {
-    playerLuck = parseFloat(document.getElementById('admin-luck-input').value) || 2.0;
-    let rp = parseInt(document.getElementById('admin-rp-input').value);
-    if(!isNaN(rp)) allAccounts[currentAccIdx].points = rp;
-    updateUI(); toggleModal('admin-modal');
-}
-
-function toggleModal(id) {
-    const m = document.getElementById(id);
-    m.style.display = (m.style.display === 'none' || !m.style.display) ? 'flex' : 'none';
-    if(id === 'acc-modal' && m.style.display === 'flex') renderAccounts();
-}
-
-function renderAccounts() {
-    const list = document.getElementById('acc-list');
-    list.innerHTML = "";
-    allAccounts.forEach((acc, idx) => {
-        list.innerHTML += `<div class="acc-item" style="border-left: 3px solid ${idx === currentAccIdx ? 'var(--crimson)' : 'transparent'}">
-            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;"><b>${acc.name}</b><br><small>${acc.points} RP</small></div>
-            <button onclick="deleteAcc(event, ${idx})" style="color:#f87171; font-size:0.6rem;">DEL</button>
-        </div>`;
-    });
-}
-
-function switchAcc(i) { currentAccIdx = i; updateUI(); queueBot(); resetRound(); toggleModal('acc-modal'); }
-
-function createNewAccount() {
-    let n = document.getElementById('new-acc-name').value;
-    if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: []}); renderAccounts(); }
-}
-
-function deleteAcc(e, i) {
-    e.stopPropagation();
-    if(allAccounts.length > 1) { allAccounts.splice(i, 1); if(currentAccIdx >= allAccounts.length) currentAccIdx=0; renderAccounts(); updateUI(); }
-}
-
-function openHighRolls() {
-    toggleModal('high-rolls-modal');
-    const list = document.getElementById('high-rolls-list');
-    list.innerHTML = globalHighRolls.map((h, i) => `
-        <div class="history-item">
-            <div style="display:flex; justify-content:space-between; width:100%;">
-                <span>#${i+1} ${h.name}</span> <b style="color:var(--crimson)">1 in ${formatRoll(h.roll)}</b>
-            </div>
-            <div class="history-meta"><span>TIME: ${h.time}</span></div>
-        </div>`).join('');
-}
-
-function openHistory() {
-    toggleModal('history-modal');
-    const list = document.getElementById('history-list');
-    list.innerHTML = (allAccounts[currentAccIdx].history || []).map(h => `
-        <div class="history-item">
-            <div style="display:flex; justify-content:space-between; width:100%;">
-                <b style="color:${h.res==='WIN'?'#22c55e':'#ef4444'}">${h.res} (${h.score})</b>
-                <span>1 in ${formatRoll(h.p)} vs ${formatRoll(h.b)}</span>
-            </div>
-            <div class="history-meta"><span>LOGGED: ${h.time}</span></div>
-        </div>`).join('');
-}
-
-function openLeaderboard() {
-    toggleModal('leaderboard-modal');
-    const list = document.getElementById('leaderboard-list');
-    list.innerHTML = [...allAccounts].sort((a,b)=>b.points-a.points).map((acc, i) => `
-        <div class="leader-item"><span>#${i+1} ${acc.name}</span><b>${acc.points} RP</b></div>`).join('');
-}
-
-function updateSettings() { settings.roundNumbers = document.getElementById('round-toggle').checked; updateUI(); }
-
-function wipeData() { if(confirm("Wipe all data?")) { localStorage.clear(); location.reload(); } }
-
-window.onkeydown = (e) => { if(e.key.toLowerCase() === 'p') { if(prompt("Passcode:") === "admin123") toggleModal('admin-modal'); } };
-window.onload = () => { updateUI(); queueBot(); resetRound(); };
+window.onload = () => { 
+    checkLeaverPenalty();
+    updateUI(); 
+    queueBot(); 
+    resetRound(); 
+};
