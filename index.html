@@ -83,12 +83,24 @@
             <h2 class="modal-header">ADMIN OVERRIDE</h2>
             <div class="scroll-list">
                 <div class="input-group">
-                    <label>LUCK MULTIPLIER</label>
+                    <label>PLAYER LUCK MULTIPLIER</label>
                     <input type="number" id="admin-luck-input" step="0.5" value="2.0">
                 </div>
                 <div class="input-group">
+                    <label>SET BOT LUCK (NEXT ROUND ONLY)</label>
+                    <input type="number" id="admin-bot-luck-input" step="0.1" placeholder="Ex: 50.0">
+                </div>
+                <div class="input-group">
                     <label>SET RP POINTS</label>
-                    <input type="number" id="admin-rp-input">
+                    <input type="number" id="admin-rp-input" placeholder="Enter RP value...">
+                </div>
+                <div class="input-group">
+                    <label>RP GAIN MULTIPLIER (BASE 1.0)</label>
+                    <input type="number" id="admin-rp-bonus-input" step="0.1" value="1.0">
+                </div>
+                <div class="input-group">
+                    <label>SET WIN STREAK</label>
+                    <input type="number" id="admin-streak-input" placeholder="Current: 0">
                 </div>
                 <div class="admin-grid">
                     <button onclick="adminAction('instaWin')" class="btn-admin win">INSTA-WIN</button>
@@ -98,6 +110,7 @@
                 </div>
             </div>
             <button onclick="applyAdminChanges()" class="btn-primary">APPLY & CLOSE</button>
+            <button onclick="resetAdminDefaults()" class="btn-secondary" style="background: #374151; margin-top: 8px;">RESET TO DEFAULTS</button>
             <button onclick="toggleModal('admin-modal')" class="btn-secondary">CANCEL</button>
         </div>
     </div>
@@ -148,7 +161,12 @@
                     <span class="slider"></span>
                 </label>
             </div>
-            <button onclick="toggleModal('settings-modal')" class="btn-secondary">CLOSE</button>
+            
+            <button onclick="openAdminPanel()" style="width:100%; padding:12px; margin-top:10px; background:#ef4444; color:white; border:none; border-radius:8px; font-family:'Orbitron'; font-weight:bold; cursor:pointer;">
+                ADMIN TERMINAL
+            </button>
+
+            <button onclick="toggleModal('settings-modal')" class="btn-secondary" style="margin-top: 10px;">CLOSE</button>
         </div>
     </div>
 
