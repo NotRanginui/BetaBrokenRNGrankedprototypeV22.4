@@ -20,7 +20,7 @@ let adminPersist = JSON.parse(localStorage.getItem('crimson_admin_persist')) || 
 if (!allAccounts[currentAccIdx]) currentAccIdx = 0;
 
 let currentAcc = allAccounts[currentAccIdx];
-// PB Sync: Pull from leaderboard history to ensure records aren't lost
+// PB Sync from Leaderboard
 let bestFromLeaderboard = globalHighRolls.filter(h => h.name === currentAcc.name).reduce((max, h) => Math.max(max, h.roll), 0);
 currentAcc.pb = Math.max(currentAcc.pb || 0, bestFromLeaderboard);
 
@@ -64,7 +64,7 @@ function getStreakColor(streak) {
     return "#fbbf24"; 
 }
 
-// --- FEEDBACK LOGIC ---
+// --- FEEDBACK LOGIC (No Div Cutscenes) ---
 function triggerMajorRankUp(rankName) {
     const overlay = document.getElementById('rank-up-overlay');
     const nameDisplay = document.getElementById('rank-up-name');
@@ -269,7 +269,7 @@ window.deleteAcc = (i) => {
     }
 };
 
-// --- SYSTEM CONTROLS ---
+// --- SYSTEM & ADMIN CONTROLS ---
 window.openAdminPanel = () => {
     if (prompt("Passcode:") === "admin123") {
         window.toggleModal('admin-modal');
