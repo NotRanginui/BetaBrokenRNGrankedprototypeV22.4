@@ -20,6 +20,7 @@ let adminPersist = JSON.parse(localStorage.getItem('crimson_admin_persist')) || 
 if (!allAccounts[currentAccIdx]) currentAccIdx = 0;
 
 let currentAcc = allAccounts[currentAccIdx];
+// PB Sync: Pull from leaderboard history to ensure records aren't lost
 let bestFromLeaderboard = globalHighRolls.filter(h => h.name === currentAcc.name).reduce((max, h) => Math.max(max, h.roll), 0);
 currentAcc.pb = Math.max(currentAcc.pb || 0, bestFromLeaderboard);
 
@@ -249,33 +250,34 @@ function updateDots() {
     }
 }
 
-// --- ACCOUNT MANAGEMENT FUNCTIONS (NEW) ---
+// --- ACCOUNT MANAGEMENT ---
 window.renameAcc = (i) => {
     let newName = prompt("Enter new name for this account:", allAccounts[i].name);
     if (newName && newName.trim() !== "") {
         allAccounts[i].name = newName.trim();
-        renderAccounts();
-        updateUI();
+        renderAccounts(); updateUI();
     }
 };
 
 window.deleteAcc = (i) => {
-    if (allAccounts.length <= 1) {
-        alert("You cannot delete your only account.");
-        return;
-    }
-    if (confirm(`Are you sure you want to delete "${allAccounts[i].name}"? This cannot be undone.`)) {
+    if (allAccounts.length <= 1) return alert("You cannot delete your only account.");
+    if (confirm(`Delete "${allAccounts[i].name}"?`)) {
         allAccounts.splice(i, 1);
-        if (currentAccIdx >= allAccounts.length) {
-            currentAccIdx = 0;
-        }
-        renderAccounts();
-        updateUI();
+        if (currentAccIdx >= allAccounts.length) currentAccIdx = 0;
+        renderAccounts(); updateUI();
         if (i === currentAccIdx || allAccounts.length === 1) window.location.reload();
     }
 };
 
 // --- SYSTEM CONTROLS ---
+window.openAdminPanel = () => {
+    if (prompt("Passcode:") === "admin123") {
+        window.toggleModal('admin-modal');
+    } else {
+        alert("Incorrect passcode.");
+    }
+};
+
 window.openHistory = () => {
     window.toggleModal('history-modal');
     document.getElementById('history-list').innerHTML = (allAccounts[currentAccIdx].history || []).map(h => `
@@ -305,10 +307,7 @@ window.updateSettings = () => {
 };
 
 window.wipeData = () => {
-    if(confirm("Wipe ALL progress?")) {
-        localStorage.clear();
-        window.location.reload();
-    }
+    if(confirm("Wipe ALL progress?")) { localStorage.clear(); window.location.reload(); }
 };
 
 window.resetAdminDefaults = () => {
@@ -353,13 +352,10 @@ window.createNewAccount = () => {
     if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: [], pb: 0}); renderAccounts(); document.getElementById('new-acc-name').value = ""; updateUI(); }
 };
 
-// --- RENDER ACCOUNTS (UPDATED WITH BUTTONS) ---
 function renderAccounts() {
     document.getElementById('acc-list').innerHTML = allAccounts.map((acc, idx) => `
         <div class="acc-item" style="border-left: 4px solid ${idx === currentAccIdx ? '#ef4444' : 'transparent'}; display:flex; align-items:center; justify-content:space-between; padding: 10px;">
-            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;">
-                <b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small>
-            </div>
+            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;"><b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small></div>
             <div style="display:flex; gap: 5px;">
                 <button onclick="renameAcc(${idx})" style="padding: 2px 8px; font-size: 0.7rem; background: #334155; border: none; color: white; cursor: pointer; border-radius: 4px;">RENAME</button>
                 <button onclick="deleteAcc(${idx})" style="padding: 2px 8px; font-size: 0.7rem; background: #991b1b; border: none; color: white; cursor: pointer; border-radius: 4px;">DEL</button>
@@ -373,15 +369,14 @@ function saveMatchState() {
 
 function clearMatchState() { localStorage.removeItem('crimson_match_state'); }
 
-window.onkeydown = (e) => { if(e.key.toLowerCase() === 'p') { if(prompt("Passcode:") === "admin123") window.toggleModal('admin-modal'); } };
+window.onkeydown = (e) => { if(e.key.toLowerCase() === 'p') window.openAdminPanel(); };
 
 window.onload = () => {
     document.getElementById('round-toggle').checked = settings.roundNumbers;
     updateUI();
     const savedState = JSON.parse(localStorage.getItem('crimson_match_state'));
     if (savedState && savedState.inProgress) {
-        playerSets = savedState.playerSets; 
-        botSets = savedState.botSets;
+        playerSets = savedState.playerSets; botSets = savedState.botSets;
         currentBotRank = savedState.currentBotRank;
         currentBotLuckValue = savedState.currentBotLuckValue;
         botRoll = generateRarity(currentBotLuckValue);
