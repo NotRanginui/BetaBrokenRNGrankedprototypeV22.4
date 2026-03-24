@@ -19,7 +19,6 @@ let adminPersist = JSON.parse(localStorage.getItem('crimson_admin_persist')) || 
 
 if (!allAccounts[currentAccIdx]) currentAccIdx = 0;
 
-// Persistent PB Sync: Ensure the account PB matches their best roll ever recorded
 let currentAcc = allAccounts[currentAccIdx];
 let bestFromLeaderboard = globalHighRolls.filter(h => h.name === currentAcc.name).reduce((max, h) => Math.max(max, h.roll), 0);
 currentAcc.pb = Math.max(currentAcc.pb || 0, bestFromLeaderboard);
@@ -64,7 +63,7 @@ function getStreakColor(streak) {
     return "#fbbf24"; 
 }
 
-// --- FEEDBACK LOGIC (No Div Cutscenes) ---
+// --- FEEDBACK LOGIC ---
 function triggerMajorRankUp(rankName) {
     const overlay = document.getElementById('rank-up-overlay');
     const nameDisplay = document.getElementById('rank-up-name');
@@ -195,7 +194,6 @@ document.getElementById('roll-btn').onclick = () => {
         document.getElementById('player-roll').innerHTML = `<span class="roll-value">1 in ${formatRoll(playerRoll)}</span><span class="roll-suffix">RARITY</span>`;
         document.getElementById('player-retries').innerText = godMode ? "GOD MODE" : `RETRIES: ${playerRetries}`;
         
-        // PB Tracking - Persistent
         if (playerRoll > (acc.pb || 0)) { 
             acc.pb = playerRoll; 
             showPointPopup(0, true, "NEW PB!", "35%"); 
@@ -209,7 +207,6 @@ document.getElementById('stand-btn').onclick = () => {
     isProcessing = true;
     document.getElementById('bot-roll').innerHTML = `<span class="roll-value">1 in ${formatRoll(botRoll)}</span><span class="roll-suffix">RARITY</span>`;
     
-    // Save High Roll to Leaderboard
     if (playerRoll > 50) {
         globalHighRolls.push({name: allAccounts[currentAccIdx].name, roll: playerRoll, time: getTime()});
         globalHighRolls.sort((a,b) => b.roll - a.roll).splice(15);
@@ -251,6 +248,32 @@ function updateDots() {
         b.innerHTML += `<div class="dot ${i < botSets ? 'b-win' : ''}"></div>`;
     }
 }
+
+// --- ACCOUNT MANAGEMENT FUNCTIONS (NEW) ---
+window.renameAcc = (i) => {
+    let newName = prompt("Enter new name for this account:", allAccounts[i].name);
+    if (newName && newName.trim() !== "") {
+        allAccounts[i].name = newName.trim();
+        renderAccounts();
+        updateUI();
+    }
+};
+
+window.deleteAcc = (i) => {
+    if (allAccounts.length <= 1) {
+        alert("You cannot delete your only account.");
+        return;
+    }
+    if (confirm(`Are you sure you want to delete "${allAccounts[i].name}"? This cannot be undone.`)) {
+        allAccounts.splice(i, 1);
+        if (currentAccIdx >= allAccounts.length) {
+            currentAccIdx = 0;
+        }
+        renderAccounts();
+        updateUI();
+        if (i === currentAccIdx || allAccounts.length === 1) window.location.reload();
+    }
+};
 
 // --- SYSTEM CONTROLS ---
 window.openHistory = () => {
@@ -327,13 +350,20 @@ window.switchAcc = (i) => { currentAccIdx = i; lastRankIdx = null; lastDiv = nul
 
 window.createNewAccount = () => {
     let n = document.getElementById('new-acc-name').value;
-    if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: [], pb: 0}); renderAccounts(); document.getElementById('new-acc-name').value = ""; }
+    if(n) { allAccounts.push({name: n, points: 0, streak: 0, history: [], pb: 0}); renderAccounts(); document.getElementById('new-acc-name').value = ""; updateUI(); }
 };
 
+// --- RENDER ACCOUNTS (UPDATED WITH BUTTONS) ---
 function renderAccounts() {
     document.getElementById('acc-list').innerHTML = allAccounts.map((acc, idx) => `
-        <div class="acc-item" style="border-left: 4px solid ${idx === currentAccIdx ? '#ef4444' : 'transparent'}">
-            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;"><b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small></div>
+        <div class="acc-item" style="border-left: 4px solid ${idx === currentAccIdx ? '#ef4444' : 'transparent'}; display:flex; align-items:center; justify-content:space-between; padding: 10px;">
+            <div onclick="switchAcc(${idx})" style="flex:1; cursor:pointer;">
+                <b>${acc.name}</b><br><small>${Math.floor(acc.points)} RP</small>
+            </div>
+            <div style="display:flex; gap: 5px;">
+                <button onclick="renameAcc(${idx})" style="padding: 2px 8px; font-size: 0.7rem; background: #334155; border: none; color: white; cursor: pointer; border-radius: 4px;">RENAME</button>
+                <button onclick="deleteAcc(${idx})" style="padding: 2px 8px; font-size: 0.7rem; background: #991b1b; border: none; color: white; cursor: pointer; border-radius: 4px;">DEL</button>
+            </div>
         </div>`).join('');
 }
 
@@ -355,7 +385,6 @@ window.onload = () => {
         currentBotRank = savedState.currentBotRank;
         currentBotLuckValue = savedState.currentBotLuckValue;
         botRoll = generateRarity(currentBotLuckValue);
-        // FIX: Re-display the rank in the name after reload
         document.getElementById('bot-display-name').innerText = `BOT (${currentBotRank.toUpperCase()})`;
         updateDots();
     } else { queueBot(); resetRound(); }
